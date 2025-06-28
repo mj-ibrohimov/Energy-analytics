@@ -1,37 +1,41 @@
-import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Zap, DollarSign, Building2, FileText } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Zap, DollarSign, Building2, FileText, Sun } from 'lucide-react';
+import { getSolarStats, getSolarUsageData } from '../data/solarData';
 
 const Dashboard: React.FC = () => {
+  const solarStats = getSolarStats();
+  const solarData = getSolarUsageData();
+
   const stats = [
     {
-      title: 'Total Consumption',
-      value: '45,670 kWh',
-      change: '-8.3%',
-      trend: 'down',
+      title: 'Total Energy Generated',
+      value: `${solarStats.totalGenerated.toLocaleString()} kWh`,
+      change: `${solarStats.monthOverMonthChange.generated > 0 ? '+' : ''}${solarStats.monthOverMonthChange.generated}%`,
+      trend: solarStats.monthOverMonthChange.generated >= 0 ? 'up' : 'down',
+      icon: Sun,
+      color: 'yellow'
+    },
+    {
+      title: 'Total Energy Used',
+      value: `${solarStats.totalUsed.toLocaleString()} kWh`,
+      change: `${solarStats.monthOverMonthChange.used > 0 ? '+' : ''}${solarStats.monthOverMonthChange.used}%`,
+      trend: solarStats.monthOverMonthChange.used >= 0 ? 'up' : 'down',
       icon: Zap,
       color: 'blue'
     },
     {
-      title: 'Monthly Cost',
-      value: '€18,450',
-      change: '-12.0%',
-      trend: 'down',
+      title: 'Total Cost',
+      value: `$${solarStats.totalCost.toFixed(2)}`,
+      change: `${solarStats.monthOverMonthChange.cost > 0 ? '+' : ''}${solarStats.monthOverMonthChange.cost}%`,
+      trend: solarStats.monthOverMonthChange.cost <= 0 ? 'down' : 'up',
       icon: DollarSign,
       color: 'green'
     },
     {
-      title: 'Active Facilities',
-      value: '12',
-      change: '+0',
+      title: 'Average Efficiency',
+      value: `${solarStats.avgEfficiency}%`,
+      change: 'vs last month',
       trend: 'neutral',
       icon: Building2,
-      color: 'indigo'
-    },
-    {
-      title: 'Invoices Processed',
-      value: '23',
-      change: '+4',
-      trend: 'up',
-      icon: FileText,
       color: 'purple'
     }
   ];
@@ -39,59 +43,41 @@ const Dashboard: React.FC = () => {
   const alerts = [
     {
       id: 1,
-      type: 'critical',
-      message: 'Building C consumption spike: 45% above normal',
-      facility: 'Manufacturing Unit C',
-      time: '2 hours ago'
+      type: 'info',
+      message: `Latest invoice processed: ${solarStats.latestMonth?.month}`,
+      facility: 'Home Solar System',
+      time: 'Today'
     },
     {
       id: 2,
       type: 'warning',
-      message: 'Invoice discrepancy detected',
-      facility: 'Office Complex B',
-      time: '4 hours ago'
+      message: 'Efficiency below 80% in recent months',
+      facility: 'Solar Panel Array',
+      time: '2 days ago'
     },
     {
       id: 3,
       type: 'info',
-      message: 'Meter reading delay',
-      facility: 'Warehouse D',
-      time: '6 hours ago'
+      message: 'Payment due: $67.32',
+      facility: 'Solar Energy Bill',
+      time: '5 days ago'
     }
   ];
 
-  const recentInvoices = [
-    {
-      id: 1,
-      supplier: 'ENEL',
-      facility: 'Unit A',
-      amount: '€2,450',
-      status: 'anomaly',
-      period: 'Dec 2024'
-    },
-    {
-      id: 2,
-      supplier: 'ENI',
-      facility: 'Unit B',
-      amount: '€1,890',
-      status: 'processed',
-      period: 'Dec 2024'
-    },
-    {
-      id: 3,
-      supplier: 'Edison',
-      facility: 'Unit C',
-      amount: '€3,120',
-      status: 'pending',
-      period: 'Dec 2024'
-    }
-  ];
+  const recentInvoices = solarData.slice(0, 3).map((item, index) => ({
+    id: index + 1,
+    supplier: item.supplier.split(',')[0], // Get company name only
+    facility: 'Home Solar',
+    amount: `$${item.total_cost.toFixed(2)}`,
+    status: item.efficiency >= 80 ? 'processed' : 'anomaly',
+    period: item.month
+  }));
 
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Energy Management Dashboard</h2>
-        <p className="text-gray-600 mt-1">Real-time overview of your energy operations</p>
+        <h2 className="text-2xl font-bold text-gray-900">Solar Energy Dashboard</h2>
+        <p className="text-gray-600 mt-1">Real-time overview of your solar panel energy operations</p>
       </div>
 
       {/* Stats Grid */}
@@ -128,8 +114,8 @@ const Dashboard: React.FC = () => {
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Recent Alerts</h3>
-              <span className="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                3 Active
+              <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                {alerts.length} Active
               </span>
             </div>
           </div>
@@ -197,15 +183,31 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Energy Consumption Chart Placeholder */}
+      {/* Monthly Usage Chart */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Energy Consumption Trends</h3>
-        <div className="h-64 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg flex items-center justify-center">
-          <div className="text-center">
-            <Zap className="h-12 w-12 text-blue-500 mx-auto mb-2" />
-            <p className="text-gray-600">Interactive chart visualization</p>
-            <p className="text-sm text-gray-500">Integration with Chart.js or similar library</p>
-          </div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Energy Usage</h3>
+        <div className="space-y-3">
+          {solarData.map((month, index) => (
+            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center space-x-4">
+                <div className="text-sm font-medium text-gray-900 w-16">{month.month}</div>
+                <div className="text-sm text-gray-500">
+                  Generated: {month.energy_generated.toFixed(0)} kWh
+                </div>
+                <div className="text-sm text-gray-500">
+                  Used: {month.energy_used.toFixed(0)} kWh
+                </div>
+              </div>
+              <div className="flex items-center space-x-4">
+                <div className="text-sm text-gray-500">
+                  Efficiency: {month.efficiency}%
+                </div>
+                <div className="text-sm font-semibold text-gray-900">
+                  ${month.total_cost.toFixed(2)}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

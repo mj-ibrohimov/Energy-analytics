@@ -18,6 +18,9 @@ build/
 .env.test.local
 .env.production.local
 
+# Data files
+monthly_solar_usage_invoices.json
+
 # IDE and editor files
 .vscode/
 .idea/

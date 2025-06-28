@@ -4,17 +4,25 @@ export interface Message {
   sender: 'user' | 'assistant';
   timestamp: Date;
   type?: 'text' | 'upload' | 'alert' | 'analysis';
+  imageUrl?: string;
 }
 
 export interface EnergyAlert {
   id: string;
-  type: 'billing_anomaly' | 'consumption_spike' | 'efficiency_warning' | 'invoice_mismatch';
-  severity: 'low' | 'medium' | 'high' | 'critical';
+  type: 'consumption_spike' | 'invoice_discrepancy' | 'delayed_reading' | 'weather_impact';
+  severity: 'low' | 'medium' | 'high';
   message: string;
-  facility: string;
+  justification: string;
+  externalCorrelation?: string;
+  recommendedAction: string;
   timestamp: Date;
-  value?: number;
-  threshold?: number;
+  values: {
+    current?: number;
+    threshold?: number;
+    expected?: number;
+    actual?: number;
+    timeSinceLastReading?: string;
+  };
 }
 
 export interface Facility {
