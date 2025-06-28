@@ -1,4 +1,3 @@
-import React from 'react';
 import { BarChart3, FileText, AlertTriangle, Building2, MessageSquare } from 'lucide-react';
 
 interface SidebarProps {

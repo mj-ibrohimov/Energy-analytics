@@ -1,4 +1,3 @@
-import React from 'react';
 import { Zap, Settings, Bell, User } from 'lucide-react';
 
 const Header: React.FC = () => {

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Send, Paperclip, Bot, User, X, Upload, Image } from 'lucide-react';
 import { Message } from '../types';
 
@@ -90,7 +90,7 @@ const ChatInterface: React.FC = () => {
     }
   };
 
-  const generateAIResponse = (input: string): { content: string; type?: string } => {
+  const generateAIResponse = (input: string): { content: string; type?: 'text' | 'upload' | 'alert' | 'analysis' } => {
     const lowerInput = input.toLowerCase();
     
     if (lowerInput.includes('invoice') || lowerInput.includes('bill')) {
@@ -122,7 +122,8 @@ const ChatInterface: React.FC = () => {
     }
     
     return {
-      content: 'I understand you\'re asking about energy management. I can help you with:\n\n• **Invoice Analysis** - Upload invoice images for instant parsing and validation\n• **Consumption Monitoring** - Track usage patterns and anomalies\n• **Cost Optimization** - Identify savings opportunities\n• **Facility Management** - Monitor multiple locations\n• **Alert Management** - Real-time notifications for issues\n\nWhat specific aspect would you like to explore? You can also upload an invoice image for immediate analysis.'
+      content: 'I understand you\'re asking about energy management. I can help you with:\n\n• **Invoice Analysis** - Upload invoice images for instant parsing and validation\n• **Consumption Monitoring** - Track usage patterns and anomalies\n• **Cost Optimization** - Identify savings opportunities\n• **Facility Management** - Monitor multiple locations\n• **Alert Management** - Real-time notifications for issues\n\nWhat specific aspect would you like to explore? You can also upload an invoice image for immediate analysis.',
+      type: 'text'
     };
   };
 

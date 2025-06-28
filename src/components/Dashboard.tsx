@@ -1,4 +1,3 @@
-import React from 'react';
 import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Zap, DollarSign, Building2, FileText } from 'lucide-react';
 
 const Dashboard: React.FC = () => {

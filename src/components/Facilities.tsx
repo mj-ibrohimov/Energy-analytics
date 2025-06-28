@@ -1,4 +1,3 @@
-import React from 'react';
 import { Building2, Zap, TrendingUp, TrendingDown, MoreVertical, AlertTriangle } from 'lucide-react';
 import { Facility } from '../types';
 

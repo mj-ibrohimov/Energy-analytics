@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { Upload, FileText, CheckCircle, AlertTriangle, X, Download, Plus, Search, Filter, Eye, Calendar, DollarSign } from 'lucide-react';
 
 interface ProcessedInvoice {
