@@ -206,7 +206,7 @@ const Dashboard: React.FC = () => {
                   ${month.total_cost.toFixed(2)}
                 </div>
               </div>
-            </div>
+          </div>
           ))}
         </div>
       </div>

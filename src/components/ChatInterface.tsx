@@ -20,6 +20,8 @@ const ChatInterface: React.FC = () => {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageQuestion, setImageQuestion] = useState('');
   const [extractedData, setExtractedData] = useState<any>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [ocrData, setOcrData] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -62,11 +64,40 @@ const ChatInterface: React.FC = () => {
     }, 1500);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
       const file = files[0];
       setUploadedImage(file);
+      setIsProcessing(true);
+      
+      try {
+        // Create form data
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // Call OCR API
+        const response = await fetch('/api/ocr', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error('OCR processing failed');
+        }
+
+        const data = await response.json();
+        if (data.success) {
+          setOcrData(data.extracted_data);
+          console.log('OCR Data:', data.extracted_data);
+        } else {
+          console.error('OCR Error:', data.error_message);
+        }
+      } catch (error) {
+        console.error('Error processing document:', error);
+      } finally {
+        setIsProcessing(false);
+      }
       
       // Create preview URL for images
       if (file.type.startsWith('image/')) {
@@ -89,7 +120,7 @@ const ChatInterface: React.FC = () => {
     // Add user message with file
     const userMessage: Message = {
       id: Date.now().toString(),
-      content: `📎 Uploaded document: ${uploadedImage.name}`,
+      content: `📎 Uploaded document: ${uploadedImage.name}${imageQuestion ? `\nQuestion: ${imageQuestion}` : ''}`,
       sender: 'user',
       timestamp: new Date(),
       type: 'upload',
@@ -100,7 +131,7 @@ const ChatInterface: React.FC = () => {
     setShowUploadModal(false);
     setIsTyping(true);
 
-    // Simulate AI processing the document
+    // Generate response based on OCR data
     setTimeout(() => {
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -117,25 +148,66 @@ const ChatInterface: React.FC = () => {
     setUploadedImage(null);
     setImagePreview(null);
     setImageQuestion('');
-    setExtractedData(null);
   };
 
   const generateDocumentAnalysisResponse = (question: string, file: File): string => {
-    const fileType = file.type;
-    const fileName = file.name;
-    
-    let fileTypeInfo = '';
-    if (fileType.startsWith('image/')) {
-      fileTypeInfo = 'image';
-    } else if (fileType === 'application/pdf') {
-      fileTypeInfo = 'PDF document';
-    } else if (fileType === 'application/msword' || fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      fileTypeInfo = 'Word document';
-    } else {
-      fileTypeInfo = 'document';
+    if (!ocrData) {
+      return "I'm still processing the document. Please ask your question again in a moment.";
     }
 
-    return `I'll analyze your ${fileTypeInfo} and answer any specific questions you have about it. What would you like to know?`;
+    const lowerQuestion = question.toLowerCase();
+    
+    // Helper function to format currency
+    const formatCurrency = (amount: number) => {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: ocrData.currency || 'USD'
+      }).format(amount);
+    };
+
+    // Handle different types of questions
+    if (lowerQuestion.includes('total') || lowerQuestion.includes('cost') || lowerQuestion.includes('amount')) {
+      const total = ocrData.total_amount;
+      const subtotal = ocrData.subtotal;
+      const tax = ocrData.tax_amount;
+      
+      return `The total amount is ${formatCurrency(total)}. This includes:
+• Subtotal: ${formatCurrency(subtotal)}
+• Tax: ${formatCurrency(tax)}${ocrData.shipping_cost ? `\n• Shipping: ${formatCurrency(ocrData.shipping_cost)}` : ''}${ocrData.discount ? `\n• Discount: ${formatCurrency(ocrData.discount)}` : ''}`;
+    }
+
+    if (lowerQuestion.includes('date') || lowerQuestion.includes('when')) {
+      return `This invoice is dated ${ocrData.date}.`;
+    }
+
+    if (lowerQuestion.includes('supplier') || lowerQuestion.includes('seller') || lowerQuestion.includes('vendor')) {
+      const supplier = ocrData.supplier_info;
+      return `The supplier is ${supplier.company_name}${supplier.address ? `\nAddress: ${supplier.address}` : ''}${supplier.phone ? `\nPhone: ${supplier.phone}` : ''}`;
+    }
+
+    if (lowerQuestion.includes('items') || lowerQuestion.includes('products') || lowerQuestion.includes('bought')) {
+      const items = ocrData.items;
+      return `Here are the items in the invoice:\n${items.map((item: any, index: number) => 
+        `${index + 1}. ${item.product_name} - ${item.quantity} ${item.unit || 'units'} at ${formatCurrency(item.unit_price)} each = ${formatCurrency(item.amount)}`
+      ).join('\n')}`;
+    }
+
+    if (lowerQuestion.includes('payment') || lowerQuestion.includes('terms')) {
+      const terms = ocrData.payment_terms;
+      return `Payment Terms:\n${Object.entries(terms).map(([key, value]) => 
+        value ? `• ${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: ${value}` : ''
+      ).filter(Boolean).join('\n')}`;
+    }
+
+    // Default response with overview
+    return `This invoice contains the following information:
+• Invoice Number: ${ocrData.invoice_number}
+• Date: ${ocrData.date}
+• Supplier: ${ocrData.supplier_info.company_name}
+• Total Amount: ${formatCurrency(ocrData.total_amount)}
+• Number of Items: ${ocrData.items.length}
+
+What specific information would you like to know about?`;
   };
 
   const generateAIResponse = (input: string): { content: string; type?: 'text' | 'upload' | 'alert' | 'analysis' } => {
@@ -328,7 +400,7 @@ const ChatInterface: React.FC = () => {
                   setUploadedImage(null);
                   setImagePreview(null);
                   setImageQuestion('');
-                  setExtractedData(null);
+                  setOcrData(null);
                 }}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -360,15 +432,25 @@ const ChatInterface: React.FC = () => {
               )}
             </div>
 
+            {/* Processing Status */}
+            {isProcessing && (
+              <div className="mb-4">
+                <div className="flex items-center justify-center space-x-2 text-blue-600">
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-b-transparent"></div>
+                  <span className="text-sm">Processing document...</span>
+                </div>
+              </div>
+            )}
+
             {/* Question Input */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Ask a question about this document (optional):
+                Ask a question about this document:
               </label>
               <textarea
                 value={imageQuestion}
                 onChange={(e) => setImageQuestion(e.target.value)}
-                placeholder="e.g., What's the total cost? How efficient are my panels? Any anomalies?"
+                placeholder="e.g., What's the total cost? What items were purchased? What are the payment terms?"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
                 rows={3}
               />
@@ -382,7 +464,7 @@ const ChatInterface: React.FC = () => {
                   setUploadedImage(null);
                   setImagePreview(null);
                   setImageQuestion('');
-                  setExtractedData(null);
+                  setOcrData(null);
                 }}
                 className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
               >
@@ -390,9 +472,10 @@ const ChatInterface: React.FC = () => {
               </button>
               <button
                 onClick={handleImageAnalysis}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                disabled={isProcessing}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Analyze Document
+                {isProcessing ? 'Processing...' : 'Analyze Document'}
               </button>
             </div>
           </div>
