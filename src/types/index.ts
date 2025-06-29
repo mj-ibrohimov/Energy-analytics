@@ -3,7 +3,7 @@ export interface Message {
   content: string;
   sender: 'user' | 'assistant';
   timestamp: Date;
-  type?: 'text' | 'upload' | 'alert' | 'analysis';
+  type: 'text' | 'upload';
   imageUrl?: string;
 }
 
@@ -45,4 +45,26 @@ export interface Invoice {
   total_due: number;
   facility: string;
   status: 'processed' | 'pending' | 'anomaly_detected';
+}
+
+export interface SolarDataPoint {
+  month: string;
+  energy_generated: number;
+  energy_used: number;
+  efficiency: number;
+  total_cost: number;
+  supplier: string;
+}
+
+export interface SolarStats {
+  totalGenerated: number;
+  totalUsed: number;
+  totalCost: number;
+  avgEfficiency: number;
+  monthOverMonthChange: {
+    generated: number;
+    used: number;
+    cost: number;
+  };
+  latestMonth: SolarDataPoint | null;
 }

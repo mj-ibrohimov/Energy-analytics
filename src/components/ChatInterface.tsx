@@ -2,6 +2,21 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Paperclip, Bot, User, X, Upload, FileText, Calendar, Zap, DollarSign, Percent } from 'lucide-react';
 import { Message } from '../types';
 import { getSolarUsageData } from '../data/solarData';
+import { analyzeDocumentWithGemini } from '../services/api';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+interface ExtractedData {
+  raw_text: string;
+  structured_data: {
+    total_amount: number | null;
+    subtotal: number | null;
+    tax_amount: number | null;
+    date: string | null;
+    invoice_number: string | null;
+    vendor_name: string | null;
+    line_items: Array<{ description: string; amount: number }>;
+  } | null;
+}
 
 const ChatInterface: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
@@ -19,7 +34,7 @@ const ChatInterface: React.FC = () => {
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageQuestion, setImageQuestion] = useState('');
-  const [extractedData, setExtractedData] = useState<any>(null);
+  const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [ocrData, setOcrData] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -69,145 +84,197 @@ const ChatInterface: React.FC = () => {
     if (files && files.length > 0) {
       const file = files[0];
       setUploadedImage(file);
-      setIsProcessing(true);
       
-      try {
-        // Create form data
-        const formData = new FormData();
-        formData.append('file', file);
-
-        // Call OCR API
-        const response = await fetch('/api/ocr', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!response.ok) {
-          throw new Error('OCR processing failed');
-        }
-
-        const data = await response.json();
-        if (data.success) {
-          setOcrData(data.extracted_data);
-          console.log('OCR Data:', data.extracted_data);
-        } else {
-          console.error('OCR Error:', data.error_message);
-        }
-      } catch (error) {
-        console.error('Error processing document:', error);
-      } finally {
-        setIsProcessing(false);
-      }
-      
-      // Create preview URL for images
+      // Only create preview URL for images, no OCR processing yet
       if (file.type.startsWith('image/')) {
         const reader = new FileReader();
         reader.onload = (e) => {
           setImagePreview(e.target?.result as string);
         };
         reader.readAsDataURL(file);
-      } else {
-        setImagePreview(null);
       }
       
+      // Show the upload modal immediately
       setShowUploadModal(true);
     }
   };
 
-  const handleImageAnalysis = () => {
+  const handleImageAnalysis = async () => {
     if (!uploadedImage) return;
 
-    // Add user message with file
+    // Log file details
+    console.log('File details:', {
+      name: uploadedImage.name,
+      type: uploadedImage.type,
+      size: uploadedImage.size,
+    });
+
+    // Add user message with file and question first
     const userMessage: Message = {
       id: Date.now().toString(),
-      content: `📎 Uploaded document: ${uploadedImage.name}${imageQuestion ? `\nQuestion: ${imageQuestion}` : ''}`,
+      content: `📎 Analyzing document: ${uploadedImage.name}${imageQuestion ? `\nQuestion: ${imageQuestion}` : ''}`,
       sender: 'user',
       timestamp: new Date(),
       type: 'upload',
       imageUrl: uploadedImage.type.startsWith('image/') && imagePreview ? imagePreview : undefined
     };
-
     setMessages(prev => [...prev, userMessage]);
+    
+    // Close the modal and show typing indicator
     setShowUploadModal(false);
     setIsTyping(true);
 
-    // Generate response based on OCR data
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: generateDocumentAnalysisResponse(imageQuestion, uploadedImage),
+    try {
+      // Show processing message
+      const processingMessage: Message = {
+        id: Date.now().toString(),
+        content: "I'm analyzing your document. This will take a moment...",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'text'
       };
-      setMessages(prev => [...prev, assistantMessage]);
-      setIsTyping(false);
-    }, 1000);
+      setMessages(prev => [...prev, processingMessage]);
 
-    // Reset states
-    setUploadedImage(null);
-    setImagePreview(null);
-    setImageQuestion('');
+      // Analyze document using Gemini
+      const result = await analyzeDocumentWithGemini(uploadedImage, imageQuestion);
+
+      if (result.success && result.extracted_data) {
+        // Store the extracted data for follow-up questions
+        setExtractedData(result.extracted_data);
+        
+        // Generate response based on the extracted data
+        const response = generateDocumentAnalysisResponse(imageQuestion || '', result.extracted_data);
+        
+        // Add a hint about follow-up questions
+        const fullResponse = response + "\n\nYou can ask me follow-up questions about this invoice, such as:\n" +
+          "• What's the total amount?\n" +
+          "• When was this invoice issued?\n" +
+          "• Who is the vendor?\n" +
+          "• Can you list the line items?\n" +
+          "• What's the tax amount?";
+        
+        // Update messages with the analysis result
+        const assistantMessage: Message = {
+          id: Date.now().toString(),
+          content: fullResponse,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'text'
+        };
+        
+        // Replace processing message with actual response
+        setMessages(prev => 
+          prev.filter(msg => msg.id !== processingMessage.id).concat(assistantMessage)
+        );
+      } else {
+        throw new Error(result.error_message || 'Failed to analyze document');
+      }
+    } catch (err) {
+      const error = err as Error;
+      console.error('Error analyzing document:', error);
+      
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        content: `I apologize, but I encountered an error while analyzing your document: ${error.message}\n\n` +
+                "Please make sure:\n" +
+                "• The file is a valid invoice or bill\n" +
+                "• The image is clear and readable\n" +
+                "• The file format is supported (PNG, JPEG, PDF)\n" +
+                "• The file size is not too large (maximum 10MB)\n\n" +
+                "You can also try:\n" +
+                "• Converting the file to a different format\n" +
+                "• Reducing the file size\n" +
+                "• Making sure the document is properly oriented",
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'text'
+      };
+      
+      // Replace processing message with error message
+      setMessages(prev => {
+        // Find and remove the processing message if it exists
+        const filteredMessages = prev.filter(msg => 
+          !msg.content.includes("I'm analyzing your document")
+        );
+        return [...filteredMessages, errorMessage];
+      });
+    } finally {
+      setIsTyping(false);
+      setUploadedImage(null);
+      setImagePreview(null);
+      setImageQuestion('');
+    }
   };
 
-  const generateDocumentAnalysisResponse = (question: string, file: File): string => {
-    if (!ocrData) {
-      return "I'm still processing the document. Please ask your question again in a moment.";
-    }
-
-    const lowerQuestion = question.toLowerCase();
+  const generateDocumentAnalysisResponse = (question: string, extractedData: any): string => {
+    const { raw_text, structured_data } = extractedData;
     
-    // Helper function to format currency
-    const formatCurrency = (amount: number) => {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: ocrData.currency || 'USD'
-      }).format(amount);
-    };
-
-    // Handle different types of questions
-    if (lowerQuestion.includes('total') || lowerQuestion.includes('cost') || lowerQuestion.includes('amount')) {
-      const total = ocrData.total_amount;
-      const subtotal = ocrData.subtotal;
-      const tax = ocrData.tax_amount;
-      
-      return `The total amount is ${formatCurrency(total)}. This includes:
-• Subtotal: ${formatCurrency(subtotal)}
-• Tax: ${formatCurrency(tax)}${ocrData.shipping_cost ? `\n• Shipping: ${formatCurrency(ocrData.shipping_cost)}` : ''}${ocrData.discount ? `\n• Discount: ${formatCurrency(ocrData.discount)}` : ''}`;
+    // If we have a specific question, use the raw text from Gemini
+    if (question && question.trim() !== '') {
+      return raw_text;
+    }
+    
+    // Otherwise, generate a structured response from the parsed data
+    if (!structured_data) {
+      return "I apologize, but I couldn't structure the extracted data properly. Here's what I found:\n\n" + raw_text;
     }
 
-    if (lowerQuestion.includes('date') || lowerQuestion.includes('when')) {
-      return `This invoice is dated ${ocrData.date}.`;
+    const {
+      total_amount,
+      subtotal,
+      tax_amount,
+      date,
+      invoice_number,
+      vendor_name,
+      line_items
+    } = structured_data;
+
+    let response = '';
+
+    if (vendor_name) {
+      response += `Invoice from: ${vendor_name}\n`;
+    }
+    
+    if (invoice_number) {
+      response += `Invoice number: ${invoice_number}\n`;
+    }
+    
+    if (date) {
+      response += `Date: ${date}\n`;
     }
 
-    if (lowerQuestion.includes('supplier') || lowerQuestion.includes('seller') || lowerQuestion.includes('vendor')) {
-      const supplier = ocrData.supplier_info;
-      return `The supplier is ${supplier.company_name}${supplier.address ? `\nAddress: ${supplier.address}` : ''}${supplier.phone ? `\nPhone: ${supplier.phone}` : ''}`;
+    response += '\nAmounts:\n';
+    
+    if (total_amount !== null) {
+      response += `• Total: ${formatCurrency(total_amount)}\n`;
+    }
+    
+    if (subtotal !== null) {
+      response += `• Subtotal: ${formatCurrency(subtotal)}\n`;
+    }
+    
+    if (tax_amount !== null) {
+      response += `• Tax: ${formatCurrency(tax_amount)}\n`;
     }
 
-    if (lowerQuestion.includes('items') || lowerQuestion.includes('products') || lowerQuestion.includes('bought')) {
-      const items = ocrData.items;
-      return `Here are the items in the invoice:\n${items.map((item: any, index: number) => 
-        `${index + 1}. ${item.product_name} - ${item.quantity} ${item.unit || 'units'} at ${formatCurrency(item.unit_price)} each = ${formatCurrency(item.amount)}`
-      ).join('\n')}`;
+    if (line_items && line_items.length > 0) {
+      response += '\nLine Items:\n';
+      line_items.forEach((item: any) => {
+        response += `• ${item.description}: ${formatCurrency(item.amount)}\n`;
+      });
     }
 
-    if (lowerQuestion.includes('payment') || lowerQuestion.includes('terms')) {
-      const terms = ocrData.payment_terms;
-      return `Payment Terms:\n${Object.entries(terms).map(([key, value]) => 
-        value ? `• ${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: ${value}` : ''
-      ).filter(Boolean).join('\n')}`;
+    return response;
+  };
+
+  const formatCurrency = (amount: number | null): string => {
+    if (amount === null || isNaN(amount)) {
+      return 'Not available';
     }
-
-    // Default response with overview
-    return `This invoice contains the following information:
-• Invoice Number: ${ocrData.invoice_number}
-• Date: ${ocrData.date}
-• Supplier: ${ocrData.supplier_info.company_name}
-• Total Amount: ${formatCurrency(ocrData.total_amount)}
-• Number of Items: ${ocrData.items.length}
-
-What specific information would you like to know about?`;
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
   };
 
   const generateAIResponse = (input: string): { content: string; type?: 'text' | 'upload' | 'alert' | 'analysis' } => {
@@ -229,7 +296,7 @@ What specific information would you like to know about?`;
     
     if (lowerInput.includes('cost') || lowerInput.includes('spend')) {
       return {
-        content: '💰 **Cost Analysis**\n\n**Monthly Spending (Last 7 months):**\n• Total spent: $382.71\n• Average monthly: $54.67\n• Highest month: May 2025 ($84.55)\n• Lowest month: April 2025 ($39.92)\n\n**Cost Breakdown:**\n• Energy charges: $273.54 (71%)\n• Service fees: $109.17 (29%)\n• Average rate: $0.15/kWh\n\n**Savings Opportunities:**\n• Optimize panel efficiency\n• Consider time-of-use rates\n• Monitor service fee variations',
+        content: '�� **Cost Analysis**\n\n**Monthly Spending (Last 7 months):**\n• Total spent: $382.71\n• Average monthly: $54.67\n• Highest month: May 2025 ($84.55)\n• Lowest month: April 2025 ($39.92)\n\n**Cost Breakdown:**\n• Energy charges: $273.54 (71%)\n• Service fees: $109.17 (29%)\n• Average rate: $0.15/kWh\n\n**Savings Opportunities:**\n• Optimize panel efficiency\n• Consider time-of-use rates\n• Monitor service fee variations',
         type: 'analysis'
       };
     }
@@ -246,6 +313,101 @@ What specific information would you like to know about?`;
     'Compare monthly costs',
     'Check panel efficiency'
   ];
+
+  // Function to handle follow-up questions about invoice data
+  const handleFollowUpQuestion = async (question: string) => {
+    if (!extractedData) {
+      return "I don't have any invoice data to answer questions about. Please upload an invoice first.";
+    }
+
+    // Add user's question to chat
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      content: question,
+      sender: 'user',
+      timestamp: new Date(),
+      type: 'text'
+    };
+    setMessages(prev => [...prev, userMessage]);
+    setIsTyping(true);
+
+    try {
+      // Use Gemini to answer the follow-up question
+      const model = new GoogleGenerativeAI(import.meta.env.GEMINI_API_KEY || '').getGenerativeModel({ 
+        model: 'gemini-1.5-flash' 
+      });
+
+      const prompt = `Given this invoice data:
+${JSON.stringify(extractedData.structured_data, null, 2)}
+
+And the raw extracted text:
+${extractedData.raw_text}
+
+Please answer this question about the invoice: ${question}
+
+If the question cannot be answered with the available data, please say so.
+Keep the answer concise and focused on the question asked.`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const answer = response.text();
+
+      // Add AI's response to chat
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: answer,
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'text'
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error('Error handling follow-up question:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: "I apologize, but I encountered an error while processing your question. Please try asking in a different way.",
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'text'
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputMessage.trim()) return;
+
+    const message = inputMessage.trim();
+    setInputMessage('');
+
+    // If we have extracted data, treat it as a follow-up question
+    if (extractedData) {
+      await handleFollowUpQuestion(message);
+    } else {
+      // Handle as a regular message
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        content: message,
+        sender: 'user',
+        timestamp: new Date(),
+        type: 'text'
+      };
+      setMessages(prev => [...prev, userMessage]);
+
+      // Default response for non-invoice questions
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: "I'm designed to help you analyze invoices and answer questions about them. Please upload an invoice to get started.",
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'text'
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -350,7 +512,7 @@ What specific information would you like to know about?`;
         </div>
 
         {/* Message Input */}
-        <form onSubmit={handleSendMessage} className="flex items-center space-x-3">
+        <form onSubmit={handleSubmit} className="flex items-center space-x-3">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -472,7 +634,6 @@ What specific information would you like to know about?`;
               </button>
               <button
                 onClick={handleImageAnalysis}
-                disabled={isProcessing}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isProcessing ? 'Processing...' : 'Analyze Document'}
