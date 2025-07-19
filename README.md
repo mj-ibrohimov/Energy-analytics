@@ -2,6 +2,16 @@
 
 A comprehensive energy management platform with AI-powered invoice processing, real-time monitoring, and analytics.
 
+## 📸 Preview Images
+
+### Anomaly Detection Testing
+![Anomaly Injection Tests](Previews/anomaly-test.png)
+*Various anomaly injection tests demonstrating the system's ability to detect and alert on unusual energy consumption patterns*
+
+### AI-Powered Invoice Processing
+![Chatbot Extracting Data](Previews/chatbot.png)
+*AI chatbot extracting and analyzing data from invoice images using advanced OCR technology*
+
 ## 🏗️ Architecture
 
 ### Frontend (React + TypeScript + Vite)
@@ -141,6 +151,14 @@ Energy-analytics/
 │   │   └── solarData.ts         # Local fallback data
 │   └── types/
 │       └── index.ts             # TypeScript type definitions
+├── Previews/                     # Application screenshots and demos
+│   ├── anomaly-test.png         # Anomaly detection testing screenshots
+│   ├── chatbot.png              # AI chatbot interface screenshots
+│   ├── Screenshot 2025-06-30 at 9.57.44 AM.png
+│   ├── Screenshot 2025-06-30 at 9.57.29 AM.png
+│   ├── Screenshot 2025-06-30 at 9.53.48 AM.png
+│   ├── Screenshot 2025-06-30 at 9.51.57 AM.png
+│   └── Kapture 2025-06-29 at 13.26.37.mp4
 ├── scrape.py                    # AI OCR processing service
 ├── server.py                    # Main FastAPI application
 ├── simple_server.py             # Development/testing server
@@ -198,12 +216,6 @@ proxy: {
 
 ## 🐛 Troubleshooting
 
-### Common Issues
-
-1. **Backend not starting**: Check if port 8000 is available
-2. **Frontend proxy errors**: Ensure backend is running on port 8000
-3. **File upload failures**: Check file size limits and supported formats
-4. **OCR processing errors**: Verify Gemini API key configuration
 
 ### Development Tips
 
